@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Mes Soldes — Congés & Récup</title>
+
+<!-- PWA : manifest + service worker ; icône iOS externe en 180×180 -->
+<meta name="description" content="Suivi personnel des congés et des heures de récupération">
+<meta name="theme-color" content="#b8732e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Mes Soldes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:        #f4ede0;
+    --paper-card:   #fbf6ec;
+    --ink:          #2e2a24;
+    --ink-soft:     #6b6258;
+    --ink-faint:    #a99f91;
+    --rule:         #d9cdb8;
+    --rule-strong:  #c4b59b;
+    --accent:       #b8732e;   /* ocre / terre de Sienne */
+    --accent-deep:  #8f5621;
+    --green:        #4f7a3f;
+    --red:          #b3442e;
+    --shadow:       0 1px 2px rgba(46,42,36,.06), 0 8px 28px rgba(46,42,36,.07);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{background:var(--paper);min-height:100%}
+  body{
+    font-family:'DM Sans',system-ui,sans-serif;
+    color:var(--ink);
+    background:
+      linear-gradient(var(--paper),var(--paper)),
+      repeating-linear-gradient(0deg, transparent 0 31px, rgba(196,181,155,.18) 31px 32px);
+    background-attachment:fixed;
+    min-height:100dvh;
+    padding:0 0 64px;
+    -webkit-text-size-adjust:100%;
+    line-height:1.45;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:0 18px}
+
+  /* ---------- En-tête ---------- */
+  header{
+    padding:34px 0 22px;
+    border-bottom:2px solid var(--rule-strong);
+    margin-bottom:4px;
+    text-align:center;
+    position:relative;
+  }
+  header h1{
+    font-family:'Fraunces',serif;
+    font-weight:500;
+    font-size:2.1rem;
+    letter-spacing:.01em;
+    font-variation-settings:'opsz' 120;
+  }
+  header .sub{
+    color:var(--ink-soft);
+    font-size:.86rem;
+    margin-top:4px;
+    font-style:italic;
+    font-family:'Fraunces',serif;
+  }
+  .year-pill{
+    display:inline-flex;align-items:center;gap:6px;
+    margin-top:12px;
+    font-family:'DM Mono',monospace;
+    font-size:.78rem;
+    color:var(--accent-deep);
+    background:rgba(184,115,46,.10);
+    border:1px solid rgba(184,115,46,.28);
+    padding:3px 12px;border-radius:999px;
+  }
+  .gear{
+    position:absolute;top:30px;right:0;
+    background:none;border:none;cursor:pointer;
+    font-size:1.15rem;color:var(--ink-faint);
+    padding:6px;line-height:1;transition:color .2s,transform .3s;
+  }
+  .gear:hover{color:var(--accent);transform:rotate(45deg)}
+
+  /* ---------- Cartes de solde ---------- */
+  .balances{display:flex;flex-direction:column;gap:14px;margin:22px 0 30px}
+  .bal{
+    background:var(--paper-card);
+    border:1px solid var(--rule);
+    border-left:5px solid var(--accent);
+    border-radius:12px;
+    padding:16px 18px;
+    box-shadow:var(--shadow);
+    display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+    animation:rise .5s cubic-bezier(.2,.7,.3,1) backwards;
+  }
+  .bal.b1{border-left-color:var(--accent)}
+  .bal.b2{border-left-color:var(--accent-deep)}
+  .bal.b3{border-left-color:var(--green)}
+  .bal:nth-child(2){animation-delay:.06s}
+  .bal:nth-child(3){animation-delay:.12s}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .bal .meta{min-width:0}
+  .bal .name{
+    font-family:'Fraunces',serif;font-weight:600;font-size:1.05rem;line-height:1.2;
+  }
+  .bal .ref{color:var(--ink-faint);font-size:.78rem;font-family:'DM Mono',monospace;margin-top:3px}
+  .bal .amount{
+    font-family:'DM Mono',monospace;font-weight:500;
+    font-size:1.7rem;white-space:nowrap;letter-spacing:-.01em;
+    font-variant-numeric:tabular-nums;
+  }
+  .bal .amount.neg{color:var(--red)}
+
+  /* ---------- Formulaire d'ajout ---------- */
+  .panel{
+    background:var(--paper-card);
+    border:1px solid var(--rule);
+    border-radius:12px;
+    padding:18px;
+    box-shadow:var(--shadow);
+    margin-bottom:30px;
+  }
+  .panel h2{
+    font-family:'Fraunces',serif;font-weight:500;font-size:1.15rem;
+    margin-bottom:14px;display:flex;align-items:center;gap:8px;
+  }
+  .field{margin-bottom:13px}
+  .field label{
+    display:block;font-size:.74rem;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--ink-soft);margin-bottom:5px;font-weight:600;
+  }
+  input,select,textarea{
+    width:100%;min-width:0;font-family:'DM Sans',sans-serif;font-size:1rem;color:var(--ink);
+    background:#fffdf8;border:1.5px solid var(--rule-strong);border-radius:8px;
+    padding:10px 12px;transition:border-color .2s,box-shadow .2s;
+  }
+  /* iOS : le champ date garde sa largeur native et déborde — on retire l'habillage */
+  input[type="date"]{
+    -webkit-appearance:none;
+    appearance:none;
+    max-width:100%;
+  }
+  textarea{resize:vertical;min-height:48px}
+  input:focus,select:focus,textarea:focus{
+    outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(184,115,46,.14);
+  }
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .row3{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px}
+
+  /* segmenté sens +/- */
+  .seg{display:flex;gap:0;border:1.5px solid var(--rule-strong);border-radius:8px;overflow:hidden}
+  .seg button{
+    flex:1;background:#fffdf8;border:none;padding:10px 4px;cursor:pointer;
+    font-family:'DM Sans';font-size:.92rem;font-weight:600;color:var(--ink-soft);
+    transition:background .15s,color .15s;
+  }
+  .seg button.minus{color:var(--red);background:rgba(179,68,46,.07)}
+  .seg button.plus{color:var(--green);background:rgba(79,122,63,.07)}
+  .seg button.on.minus{background:var(--red);color:#fff}
+  .seg button.on.plus{background:var(--green);color:#fff}
+
+  .quick{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px}
+  .quick button{
+    background:rgba(184,115,46,.10);border:1px solid rgba(184,115,46,.28);
+    color:var(--accent-deep);font-family:'DM Mono',monospace;font-size:.78rem;
+    padding:5px 11px;border-radius:999px;cursor:pointer;transition:background .15s;
+  }
+  .quick button:hover{background:rgba(184,115,46,.20)}
+
+  .btn{
+    width:100%;background:var(--accent);color:#fff;border:none;border-radius:9px;
+    padding:13px;font-family:'DM Sans';font-size:1rem;font-weight:600;cursor:pointer;
+    margin-top:6px;transition:background .2s,transform .1s;letter-spacing:.01em;
+  }
+  .btn:hover{background:var(--accent-deep)}
+  .btn:active{transform:translateY(1px)}
+  .btn-cancel-edit{
+    width:100%;background:none;border:none;color:var(--ink-soft);
+    font-family:'DM Sans';font-size:.86rem;cursor:pointer;margin-top:8px;text-decoration:underline;
+  }
+  .btn-cancel-edit:hover{color:var(--accent)}
+
+  /* ---------- Historique ---------- */
+  .hist h2{
+    font-family:'Fraunces',serif;font-weight:500;font-size:1.15rem;
+    margin-bottom:6px;display:flex;align-items:center;gap:8px;
+  }
+  .ledger{list-style:none;margin-top:8px}
+  .entry{
+    display:flex;align-items:flex-start;gap:12px;
+    padding:13px 4px;border-bottom:1px solid var(--rule);
+    animation:fade .4s ease backwards;
+  }
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .entry .date{
+    font-family:'DM Mono',monospace;font-size:.74rem;color:var(--ink-faint);
+    min-width:54px;padding-top:2px;text-align:center;line-height:1.3;
+  }
+  .entry .body{flex:1;min-width:0}
+  .entry .top{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .entry .label{font-weight:600;font-size:.95rem}
+  .entry .tag{
+    font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--ink-soft);font-weight:600;
+  }
+  .entry .delta{font-family:'DM Mono',monospace;font-weight:500;font-size:1.02rem;white-space:nowrap}
+  .entry .delta.plus{color:var(--green)}
+  .entry .delta.minus{color:var(--red)}
+  .entry .note{color:var(--ink-soft);font-size:.85rem;margin-top:3px;font-style:italic}
+  .entry .acts{display:flex;flex-direction:column;gap:1px;align-items:center}
+  .entry .edit,.entry .del{
+    background:none;border:none;color:var(--ink-faint);cursor:pointer;font-size:.95rem;
+    padding:2px 4px;line-height:1;opacity:.55;transition:opacity .15s,color .15s;
+  }
+  .entry .edit:hover{opacity:1;color:var(--accent)}
+  .entry .del:hover{opacity:1;color:var(--red)}
+  .empty{text-align:center;color:var(--ink-faint);padding:34px 10px;font-style:italic;font-family:'Fraunces',serif}
+  .entry.start{background:rgba(184,115,46,.05);border-radius:8px}
+  .entry.start .date{color:var(--accent);font-style:italic}
+  .tag-start{font-size:.72rem;color:var(--ink-faint);font-weight:500;font-style:italic;white-space:nowrap}
+  .delta.neutral{color:var(--accent-deep)}
+
+  /* ---------- Réglages (modal) ---------- */
+  .modal{
+    display:none;position:fixed;inset:0;background:rgba(46,42,36,.55);
+    z-index:50;align-items:flex-start;justify-content:center;padding:30px 16px;overflow:auto;
+  }
+  .modal.open{display:flex}
+  .sheet{
+    background:var(--paper-card);border-radius:14px;max-width:460px;width:100%;
+    padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:rise .35s ease;
+  }
+  .sheet h2{font-family:'Fraunces',serif;font-weight:500;font-size:1.3rem;margin-bottom:4px}
+  .sheet .hint{color:var(--ink-soft);font-size:.84rem;margin-bottom:18px}
+  .hm{display:flex;align-items:center;gap:8px}
+  .hm input{flex:1}
+  .hm select{flex:0 0 auto;width:auto}
+  .hm span{color:var(--ink-soft);font-size:.9rem}
+  .sheet .actions{display:flex;gap:10px;margin-top:18px}
+  .sheet .actions .btn{margin-top:0}
+  .btn-ghost{
+    background:none;border:1.5px solid var(--rule-strong);color:var(--ink-soft);
+    border-radius:9px;padding:13px;font-family:'DM Sans';font-weight:600;cursor:pointer;flex:1;
+  }
+  .btn-ghost:hover{border-color:var(--ink-soft);color:var(--ink)}
+  .io{display:flex;gap:10px;margin-top:14px;padding-top:16px;border-top:1px solid var(--rule)}
+  .io button{
+    flex:1;background:none;border:1px solid var(--rule-strong);border-radius:8px;
+    padding:9px;font-size:.82rem;font-family:'DM Mono',monospace;color:var(--ink-soft);cursor:pointer;
+  }
+  .io button:hover{border-color:var(--accent);color:var(--accent)}
+  .danger{margin-top:14px;text-align:center}
+  .danger button{
+    background:none;border:none;color:var(--red);font-family:'DM Sans';font-size:.82rem;
+    cursor:pointer;text-decoration:underline;opacity:.8;
+  }
+  .danger button:hover{opacity:1}
+
+  /* ---------- Toast ---------- */
+  .toast{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120%);
+    background:var(--ink);color:var(--paper-card);padding:12px 20px;border-radius:999px;
+    font-size:.9rem;font-weight:500;box-shadow:0 8px 24px rgba(0,0,0,.25);
+    z-index:60;transition:transform .35s cubic-bezier(.2,.8,.2,1);max-width:90vw;text-align:center;
+  }
+  .toast.show{transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <button class="gear" id="gearBtn" title="Réglages">⚙</button>
+    <h1>Mes Soldes</h1>
+    <div class="sub">Le registre des congés &amp; de la récup</div>
+    <span class="year-pill">Année <span id="yearLabel">—</span></span>
+  </header>
+
+  <!-- Soldes -->
+  <section class="balances" id="balances"></section>
+
+  <!-- Ajout d'un mouvement -->
+  <section class="panel">
+    <h2>✎ Inscrire un mouvement</h2>
+
+    <div class="field">
+      <label>Compte</label>
+      <select id="fCompte">
+        <option value="ordinaire">Congé ordinaire</option>
+        <option value="extraordinaire">Congé extraordinaire</option>
+        <option value="recup">Heures sup. / Compensation</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Sens</label>
+      <div class="seg" id="fSens">
+        <button type="button" class="minus on" data-sens="-1">− Retrait (heures posées)</button>
+        <button type="button" class="plus"     data-sens="1">+ Ajout (crédit / récup)</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="fDate">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Heures</label>
+        <input type="number" id="fHeures" min="0" step="1" placeholder="7" inputmode="numeric">
+      </div>
+      <div class="field">
+        <label>Minutes</label>
+        <select id="fMin">
+          <option value="0">00</option>
+          <option value="15">15</option>
+          <option value="30">30</option>
+          <option value="45">45</option>
+        </select>
+      </div>
+    </div>
+    <div class="quick" id="quick">
+      <button type="button" data-h="7.5">1 jour · 7h30</button>
+    </div>
+
+    <div class="field" style="margin-top:13px">
+      <label>Note (libre)</label>
+      <input type="text" id="fNote" placeholder="ex. déposé chez le chef, scanné le 12/05…">
+    </div>
+
+    <button class="btn" id="addBtn">Inscrire au registre</button>
+    <button class="btn-cancel-edit" id="cancelEditBtn" style="display:none">Annuler la modification</button>
+  </section>
+
+  <!-- Historique -->
+  <section class="hist">
+    <h2>❧ Historique</h2>
+    <ul class="ledger" id="ledger"></ul>
+  </section>
+
+</div>
+
+<!-- Réglages -->
+<div class="modal" id="modal">
+  <div class="sheet">
+    <h2>Réglages</h2>
+    <p class="hint">Soldes de départ (en heures) et année. L'app décompte ensuite au fil de tes mouvements.</p>
+
+    <div class="field">
+      <label>Année de référence</label>
+      <input type="number" id="sYear" min="2000" max="2100">
+    </div>
+    <div class="field">
+      <label>Congé ordinaire — solde de départ</label>
+      <div class="hm">
+        <input type="number" id="sOrdH" min="0" step="1" placeholder="0" inputmode="numeric"><span>h</span>
+        <select id="sOrdM"><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><span>min</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Congé extraordinaire — solde de départ</label>
+      <div class="hm">
+        <input type="number" id="sExtH" min="0" step="1" placeholder="0" inputmode="numeric"><span>h</span>
+        <select id="sExtM"><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><span>min</span>
+      </div>
+    </div>
+    <div class="field">
+      <label>Heures sup. / Compensation — solde de départ</label>
+      <div class="hm">
+        <input type="number" id="sRecH" min="0" step="1" placeholder="0" inputmode="numeric"><span>h</span>
+        <select id="sRecM"><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><span>min</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-ghost" id="cancelBtn">Annuler</button>
+      <button class="btn" id="saveBtn">Enregistrer</button>
+    </div>
+
+    <div class="io">
+      <button id="exportBtn">⬇ Exporter (sauvegarde)</button>
+      <button id="importBtn">⬆ Importer</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+
+    <div class="danger">
+      <button id="resetBtn">Tout réinitialiser</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   Mes Soldes — tout en heures
+   Données : localStorage clé "mesSoldes"
+   ========================================================= */
+"use strict";
+
+const KEY = "mesSoldes";
+const HJ = 7.5;                       // 1 jour de travail = 7h30
+const COMPTES = {
+  ordinaire:      { nom:"Congé ordinaire",        cls:"b1", jours:true },
+  extraordinaire: { nom:"Congé extraordinaire",   cls:"b2", jours:true },
+  recup:          { nom:"Heures sup. / Compensation", cls:"b3", jours:false }
+};
+
+let data = load();
+let sens = -1;                        // -1 retrait par défaut
+let editId = null;                    // id du mouvement en cours d'édition
+
+/* ---------- Stockage ---------- */
+function defaults(){
+  return {
+    version:1,
+    config:{ annee:new Date().getFullYear(), ordinaire:0, extraordinaire:0, recup:0 },
+    mouvements:[]
+  };
+}
+function load(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(!raw) return defaults();
+    const d = JSON.parse(raw);
+    d.config = Object.assign(defaults().config, d.config||{});
+    d.mouvements = Array.isArray(d.mouvements) ? d.mouvements : [];
+    return d;
+  }catch(e){
+    console.error("Lecture échouée :", e);
+    return defaults();
+  }
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(data)); }
+  catch(e){ console.error("Sauvegarde échouée :", e); toast("⚠ Sauvegarde impossible"); }
+}
+
+/* ---------- Formatage heures ---------- */
+// 7.5 -> "7h30" ; 6 -> "6h" ; 112.5 -> "112h30" ; -3 -> "−3h"
+function fmtH(h){
+  const sign = h < 0 ? "−" : "";
+  const abs = Math.abs(h);
+  const H = Math.floor(abs + 1e-9);
+  const m = Math.round((abs - H) * 60);
+  return sign + (m === 0 ? `${H}h` : `${H}h${String(m).padStart(2,"0")}`);
+}
+function fmtJours(h){
+  const j = h / HJ;
+  const txt = (Math.round(j*10)/10).toLocaleString("fr-BE",{maximumFractionDigits:1});
+  return `≈ ${txt} j`;
+}
+function fmtDate(iso){
+  const d = new Date(iso+"T00:00:00");
+  return d.toLocaleDateString("fr-BE",{day:"2-digit",month:"short"}).replace(".","");
+}
+
+/* ---------- Soldes ---------- */
+function solde(compte){
+  let s = Number(data.config[compte]) || 0;
+  for(const m of data.mouvements) if(m.compte === compte) s += m.heures;
+  return s;
+}
+
+/* ---------- Rendu ---------- */
+function render(){
+  document.getElementById("yearLabel").textContent = data.config.annee;
+
+  // Soldes
+  const box = document.getElementById("balances");
+  box.innerHTML = "";
+  for(const key of Object.keys(COMPTES)){
+    const c = COMPTES[key];
+    const s = solde(key);
+    const el = document.createElement("div");
+    el.className = `bal ${c.cls}`;
+    el.innerHTML = `
+      <div class="meta">
+        <div class="name">${c.nom}</div>
+        ${c.jours ? `<div class="ref">${fmtJours(s)}</div>` : `<div class="ref">à la pièce</div>`}
+      </div>
+      <div class="amount ${s<0?"neg":""}">${fmtH(s)}</div>`;
+    box.appendChild(el);
+  }
+
+  // Historique (récent d'abord)
+  const ul = document.getElementById("ledger");
+  const items = [...data.mouvements].sort((a,b)=> (b.date===a.date ? b.id-a.id : b.date.localeCompare(a.date)));
+  // lignes "solde de départ" (les plus anciennes → tout en bas)
+  const starts = [
+    { compte:"ordinaire",      v:data.config.ordinaire },
+    { compte:"extraordinaire", v:data.config.extraordinaire },
+    { compte:"recup",          v:data.config.recup }
+  ].filter(s=> Number(s.v) > 0);
+
+  if(!items.length && !starts.length){
+    ul.innerHTML = `<li class="empty">Aucun mouvement encore inscrit.</li>`;
+    return;
+  }
+  ul.innerHTML = "";
+  items.forEach((m,i)=>{
+    const c = COMPTES[m.compte];
+    const plus = m.heures >= 0;
+    const li = document.createElement("li");
+    li.className = "entry";
+    li.style.animationDelay = (i*0.025)+"s";
+    li.innerHTML = `
+      <div class="date">${fmtDate(m.date)}</div>
+      <div class="body">
+        <div class="top">
+          <span class="label">${opLabel(m)}</span>
+          <span class="delta ${plus?"plus":"minus"}">${plus?"+":"−"}${fmtH(Math.abs(m.heures))}</span>
+        </div>
+        ${m.note ? `<div class="note">${escapeHtml(m.note)}</div>` : ""}
+      </div>
+      <div class="acts">
+        <button class="edit" data-id="${m.id}" title="Modifier">✎</button>
+        <button class="del" data-id="${m.id}" title="Supprimer">✕</button>
+      </div>`;
+    ul.appendChild(li);
+  });
+  starts.forEach(s=>{
+    const li = document.createElement("li");
+    li.className = "entry start";
+    li.innerHTML = `
+      <div class="date">début</div>
+      <div class="body">
+        <div class="top">
+          <span class="label">${COMPTES[s.compte].nom} <span class="tag-start">· solde de départ</span></span>
+          <span class="delta neutral">${fmtH(s.v)}</span>
+        </div>
+      </div>`;
+    ul.appendChild(li);
+  });
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+// Libellé d'une opération : sur le compteur heures sup., on distingue le sens.
+function opLabel(m){
+  if(m.compte === "recup") return m.heures >= 0 ? "Heures sup." : "Compensation";
+  return COMPTES[m.compte].nom;
+}
+
+/* ---------- Ajout / édition ---------- */
+function setSens(v){
+  sens = v;
+  document.querySelectorAll("#fSens button").forEach(b=>{
+    b.classList.toggle("on", parseInt(b.dataset.sens,10) === v);
+  });
+}
+
+function submitMouvement(){
+  const compte = document.getElementById("fCompte").value;
+  const date   = document.getElementById("fDate").value;
+  const h      = parseInt(document.getElementById("fHeures").value || "0", 10);
+  const min    = parseInt(document.getElementById("fMin").value || "0", 10);
+  const note   = document.getElementById("fNote").value.trim();
+
+  const total = h + min/60;
+  if(!date){ toast("⚠ Choisis une date"); return; }
+  if(total <= 0){ toast("⚠ Indique un nombre d'heures"); return; }
+
+  if(editId){
+    const m = data.mouvements.find(x=>x.id===editId);
+    if(m){ m.compte=compte; m.date=date; m.heures=sens*total; m.note=note; }
+    endEdit();
+    save(); render();
+    toast("✓ Mouvement mis à jour");
+    return;
+  }
+
+  data.mouvements.push({ id:Date.now(), date, compte, heures: sens*total, note });
+  save();
+  render();
+
+  // reset léger (on garde la date pour enchaîner)
+  document.getElementById("fHeures").value = "";
+  document.getElementById("fMin").value = "0";
+  document.getElementById("fNote").value = "";
+  toast(sens<0 ? "✓ Heures retirées du solde" : "✓ Heures ajoutées au solde");
+}
+
+function startEdit(id){
+  const m = data.mouvements.find(x=>x.id===id);
+  if(!m) return;
+  editId = id;
+  document.getElementById("fCompte").value = m.compte;
+  setSens(m.heures >= 0 ? 1 : -1);
+  const abs = Math.abs(m.heures);
+  const H = Math.floor(abs + 1e-9);
+  document.getElementById("fHeures").value = H || "";
+  document.getElementById("fMin").value = String(Math.round((abs - H) * 60));
+  document.getElementById("fDate").value = m.date;
+  document.getElementById("fNote").value = m.note || "";
+  document.getElementById("addBtn").textContent = "Mettre à jour";
+  document.getElementById("cancelEditBtn").style.display = "block";
+  window.scrollTo({ top:0, behavior:"smooth" });
+}
+
+function endEdit(){
+  editId = null;
+  document.getElementById("addBtn").textContent = "Inscrire au registre";
+  document.getElementById("cancelEditBtn").style.display = "none";
+  setSens(-1);
+  document.getElementById("fHeures").value = "";
+  document.getElementById("fMin").value = "0";
+  document.getElementById("fNote").value = "";
+}
+
+function delMouvement(id){
+  const m = data.mouvements.find(x=>x.id===id);
+  if(!m) return;
+  if(confirm(`Supprimer ce mouvement (${opLabel(m)}, ${m.heures>=0?"+":"−"}${fmtH(Math.abs(m.heures))}) ?`)){
+    data.mouvements = data.mouvements.filter(x=>x.id!==id);
+    if(editId===id) endEdit();
+    save(); render();
+    toast("Mouvement supprimé");
+  }
+}
+
+/* ---------- Réglages ---------- */
+function openModal(){
+  document.getElementById("sYear").value = data.config.annee;
+  setHM("sOrd", data.config.ordinaire);
+  setHM("sExt", data.config.extraordinaire);
+  setHM("sRec", data.config.recup);
+  document.getElementById("modal").classList.add("open");
+}
+function splitHM(v){
+  const abs = Math.abs(Number(v) || 0);
+  const H = Math.floor(abs + 1e-9);
+  let m = Math.round((abs - H) * 60);
+  m = [0,15,30,45].reduce((a,b)=> Math.abs(b-m) < Math.abs(a-m) ? b : a, 0);
+  return { H, m };
+}
+function setHM(prefix, v){
+  const { H, m } = splitHM(v);
+  document.getElementById(prefix+"H").value = H;
+  document.getElementById(prefix+"M").value = String(m);
+}
+function readHM(prefix){
+  const H = parseInt(document.getElementById(prefix+"H").value || "0", 10);
+  const m = parseInt(document.getElementById(prefix+"M").value || "0", 10);
+  return H + m/60;
+}
+function closeModal(){ document.getElementById("modal").classList.remove("open"); }
+function saveConfig(){
+  data.config.annee          = parseInt(document.getElementById("sYear").value,10) || data.config.annee;
+  data.config.ordinaire      = readHM("sOrd");
+  data.config.extraordinaire = readHM("sExt");
+  data.config.recup          = readHM("sRec");
+  save(); render(); closeModal();
+  toast("✓ Réglages enregistrés");
+}
+
+/* ---------- Export / Import ---------- */
+// Date locale (pas UTC) : un export à 23h30 garde la date du jour
+function dateLocaleISO(d){
+  const p = n => String(n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+// "21 septembre 2026 à 14\u00A0h\u00A032"
+function fmtHorodatage(iso){
+  const d = new Date(iso);
+  if(isNaN(d)) return null;
+  const jour = d.toLocaleDateString("fr-BE", { day:"numeric", month:"long", year:"numeric" });
+  return `${jour} à ${d.getHours()}\u00A0h\u00A0${String(d.getMinutes()).padStart(2,"0")}`;
+}
+function exportData(){
+  const maintenant = new Date();
+  const sauvegarde = Object.assign({}, data, { exporteLe: maintenant.toISOString() });
+  const blob = new Blob([JSON.stringify(sauvegarde,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `mes-soldes-${dateLocaleISO(maintenant)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importData(file){
+  const r = new FileReader();
+  r.onload = e=>{
+    try{
+      const d = JSON.parse(e.target.result);
+      if(!d.config || !Array.isArray(d.mouvements)) throw new Error("format");
+      const quand = d.exporteLe ? fmtHorodatage(d.exporteLe) : null;
+      const origine = quand ? `Sauvegarde du ${quand}` : "Sauvegarde (date inconnue)";
+      if(!confirm(`${origine}\n\nRemplacer les données actuelles par celles du fichier\u202F?`)) return;
+      delete d.exporteLe;              // la date ne concerne que le fichier, pas les données
+      data = d;
+      data.config = Object.assign(defaults().config, data.config);
+      save(); render(); closeModal();
+      toast("✓ Données importées");
+    }catch(err){ toast("⚠ Fichier invalide"); }
+  };
+  r.readAsText(file);
+}
+
+function resetData(){
+  if(!confirm("Effacer TOUTES les données (soldes et mouvements) ?\n\nPense à exporter une sauvegarde avant, si besoin. Cette action est irréversible.")) return;
+  localStorage.removeItem(KEY);
+  data = defaults();
+  endEdit();
+  render();
+  // recharger les champs des réglages sur les valeurs par défaut
+  document.getElementById("sYear").value = data.config.annee;
+  setHM("sOrd", data.config.ordinaire);
+  setHM("sExt", data.config.extraordinaire);
+  setHM("sRec", data.config.recup);
+  toast("Données réinitialisées");
+}
+
+/* ---------- Toast ---------- */
+let toastT;
+function toast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastT);
+  toastT = setTimeout(()=>t.classList.remove("show"), 2400);
+}
+
+/* ---------- Init / événements ---------- */
+function init(){
+  document.getElementById("fDate").value = new Date().toISOString().slice(0,10);
+
+  document.getElementById("addBtn").addEventListener("click", submitMouvement);
+  document.getElementById("cancelEditBtn").addEventListener("click", endEdit);
+  document.getElementById("gearBtn").addEventListener("click", openModal);
+  document.getElementById("cancelBtn").addEventListener("click", closeModal);
+  document.getElementById("saveBtn").addEventListener("click", saveConfig);
+  document.getElementById("modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(); });
+
+  // sens +/-
+  document.getElementById("fSens").addEventListener("click", e=>{
+    const b = e.target.closest("button"); if(!b) return;
+    setSens(parseInt(b.dataset.sens,10));
+  });
+
+  // raccourcis heures
+  document.getElementById("quick").addEventListener("click", e=>{
+    const b = e.target.closest("button"); if(!b) return;
+    const h = parseFloat(b.dataset.h);
+    document.getElementById("fHeures").value = Math.floor(h);
+    document.getElementById("fMin").value = String(Math.round((h-Math.floor(h))*60));
+  });
+
+  // édition / suppression
+  document.getElementById("ledger").addEventListener("click", e=>{
+    const ed = e.target.closest(".edit");
+    if(ed){ startEdit(parseInt(ed.dataset.id,10)); return; }
+    const del = e.target.closest(".del");
+    if(del){ delMouvement(parseInt(del.dataset.id,10)); }
+  });
+
+  // export / import
+  document.getElementById("exportBtn").addEventListener("click", exportData);
+  document.getElementById("importBtn").addEventListener("click", ()=>document.getElementById("importFile").click());
+  document.getElementById("importFile").addEventListener("change", e=>{
+    if(e.target.files[0]) importData(e.target.files[0]);
+    e.target.value = "";
+  });
+  document.getElementById("resetBtn").addEventListener("click", resetData);
+
+  // Premier lancement : ouvrir les réglages pour saisir les soldes
+  const vierge = !localStorage.getItem(KEY);
+  render();
+  if(vierge) openModal();
+}
+
+init();
+
+/* ---------- Service worker (portée limitée au dossier de l'appli) ---------- */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("./service-worker.js", { scope:"./" })
+      .catch(err => console.error("Service worker :", err));
+  });
+}
+</script>
+</body>
+</html>
