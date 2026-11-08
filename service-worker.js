@@ -3,7 +3,7 @@
    le préfixe "mes-soldes-" garantit qu'on ne touche qu'à NOS caches.
    → Incrémenter CACHE_NAME à chaque mise en ligne. */
 const PREFIXE = "mes-soldes-";
-const CACHE_NAME = PREFIXE + "v1";
+const CACHE_NAME = PREFIXE + "v2";
 
 const FICHIERS = [
   "./",

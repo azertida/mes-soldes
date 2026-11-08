@@ -224,6 +224,27 @@
   .entry .edit:hover{opacity:1;color:var(--accent)}
   .entry .del:hover{opacity:1;color:var(--red)}
   .empty{text-align:center;color:var(--ink-faint);padding:34px 10px;font-style:italic;font-family:'Fraunces',serif}
+  /* Case « déclaré sur la feuille officielle » */
+  .entry .decl{
+    flex:0 0 auto;width:30px;height:30px;margin-top:-2px;
+    border:2px solid var(--rule-strong);border-radius:7px;background:#fffdf8;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    font-size:1.05rem;font-weight:700;color:transparent;line-height:1;
+    transition:background .15s,border-color .15s,color .15s;
+  }
+  .entry .decl:hover{border-color:var(--accent)}
+  .entry .decl[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:#fff}
+  .entry.declare .date,.entry.declare .body{opacity:.45}
+  .decl-bar{
+    display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 12px;
+    color:var(--ink-soft);font-size:.9rem;margin-bottom:4px;
+  }
+  .decl-bar[hidden],.decl-bar button[hidden]{display:none}
+  .decl-bar button{
+    background:none;border:none;color:var(--accent-deep);font-family:'DM Sans';font-size:.9rem;
+    cursor:pointer;text-decoration:underline;padding:0;
+  }
+  .decl-bar button:hover{color:var(--accent)}
   .entry.start{background:rgba(184,115,46,.05);border-radius:8px}
   .entry.start .date{color:var(--accent);font-style:italic}
   .tag-start{font-size:.72rem;color:var(--ink-faint);font-weight:500;font-style:italic;white-space:nowrap}
@@ -344,6 +365,10 @@
   <!-- Historique -->
   <section class="hist">
     <h2>❧ Historique</h2>
+    <div class="decl-bar" id="declBar" hidden>
+      <span id="declCompte"></span>
+      <button type="button" id="declAllBtn">Tout marquer comme déclaré</button>
+    </div>
     <ul class="ledger" id="ledger"></ul>
   </section>
 
@@ -502,6 +527,7 @@ function render(){
     { compte:"recup",          v:data.config.recup }
   ].filter(s=> Number(s.v) > 0);
 
+  renderDeclBar();
   if(!items.length && !starts.length){
     ul.innerHTML = `<li class="empty">Aucun mouvement encore inscrit.</li>`;
     return;
@@ -511,9 +537,11 @@ function render(){
     const c = COMPTES[m.compte];
     const plus = m.heures >= 0;
     const li = document.createElement("li");
-    li.className = "entry";
+    li.className = "entry" + (m.declare ? " declare" : "");
     li.style.animationDelay = (i*0.025)+"s";
     li.innerHTML = `
+      <button class="decl" data-id="${m.id}" aria-pressed="${m.declare?"true":"false"}"
+              title="Déclaré sur ma feuille officielle">✓</button>
       <div class="date">${fmtDate(m.date)}</div>
       <div class="body">
         <div class="top">
@@ -542,6 +570,36 @@ function render(){
     ul.appendChild(li);
   });
 }
+/* ---------- Déclaré sur la feuille officielle ---------- */
+function aDeclarer(){ return data.mouvements.filter(m=>!m.declare).length; }
+function renderDeclBar(){
+  const bar = document.getElementById("declBar");
+  const n = aDeclarer();
+  bar.hidden = !data.mouvements.length;
+  document.getElementById("declCompte").textContent =
+    n === 0 ? "✓ Tout est déclaré" : `${n} mouvement${n>1?"s":""} à déclarer`;
+  document.getElementById("declAllBtn").hidden = n === 0;
+}
+// Bascule sur place (sans tout redessiner, pour éviter le clignotement de la liste)
+function toggleDeclare(id, btn){
+  const m = data.mouvements.find(x=>x.id===id);
+  if(!m) return;
+  m.declare = !m.declare;
+  save();
+  btn.setAttribute("aria-pressed", m.declare ? "true" : "false");
+  btn.closest(".entry").classList.toggle("declare", m.declare);
+  renderDeclBar();
+  toast(m.declare ? "✓ Déclaré" : "Remis à déclarer");
+}
+function declareAll(){
+  const n = aDeclarer();
+  if(!n) return;
+  if(!confirm(`Marquer ${n>1?`les ${n} mouvements restants`:"le mouvement restant"} comme déclaré${n>1?"s":""} ?`)) return;
+  data.mouvements.forEach(m=>{ m.declare = true; });
+  save(); render();
+  toast("✓ Tout est déclaré");
+}
+
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 }
@@ -572,14 +630,22 @@ function submitMouvement(){
 
   if(editId){
     const m = data.mouvements.find(x=>x.id===editId);
-    if(m){ m.compte=compte; m.date=date; m.heures=sens*total; m.note=note; }
+    let redeclarer = false;
+    if(m){
+      // Compte, date ou heures changés sur un mouvement déclaré → à re-déclarer
+      // (la note seule ne figure pas sur la feuille officielle)
+      const change = m.compte!==compte || m.date!==date || Math.abs(m.heures - sens*total) > 1e-9;
+      redeclarer = m.declare && change;
+      if(redeclarer) m.declare = false;
+      m.compte=compte; m.date=date; m.heures=sens*total; m.note=note;
+    }
     endEdit();
     save(); render();
-    toast("✓ Mouvement mis à jour");
+    toast(redeclarer ? "✓ Mis à jour — à déclarer de nouveau" : "✓ Mouvement mis à jour");
     return;
   }
 
-  data.mouvements.push({ id:Date.now(), date, compte, heures: sens*total, note });
+  data.mouvements.push({ id:Date.now(), date, compte, heures: sens*total, note, declare:false });
   save();
   render();
 
@@ -757,6 +823,8 @@ function init(){
 
   // édition / suppression
   document.getElementById("ledger").addEventListener("click", e=>{
+    const dc = e.target.closest(".decl");
+    if(dc){ toggleDeclare(parseInt(dc.dataset.id,10), dc); return; }
     const ed = e.target.closest(".edit");
     if(ed){ startEdit(parseInt(ed.dataset.id,10)); return; }
     const del = e.target.closest(".del");
@@ -771,6 +839,7 @@ function init(){
     e.target.value = "";
   });
   document.getElementById("resetBtn").addEventListener("click", resetData);
+  document.getElementById("declAllBtn").addEventListener("click", declareAll);
 
   // Premier lancement : ouvrir les réglages pour saisir les soldes
   const vierge = !localStorage.getItem(KEY);
