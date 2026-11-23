@@ -72,6 +72,17 @@
     font-style:italic;
     font-family:'Fraunces',serif;
   }
+  .lexique{
+    margin:16px auto 0;max-width:520px;text-align:left;
+    background:var(--paper-card);border:1px solid var(--rule);
+    border-left:4px solid var(--accent);border-radius:10px;
+    padding:10px 14px;font-size:.92rem;line-height:1.5;
+  }
+  .lexique p + p{margin-top:6px}
+  .lexique b{color:var(--ink)}
+  .lexique .in{color:var(--green)}
+  .lexique .out{color:var(--red)}
+  .lexique i{color:var(--ink-soft)}
   .year-pill{
     display:inline-flex;align-items:center;gap:6px;
     margin-top:12px;
@@ -307,6 +318,10 @@
     <h1>Mes Soldes</h1>
     <div class="sub">Le registre des congés &amp; de la récup</div>
     <span class="year-pill">Année <span id="yearLabel">—</span></span>
+    <div class="lexique">
+      <p><b class="in">Ce qui rentre</b> <i>(compensation)</i> : les heures que tu gagnes, quand tu prestes en plus ou quand un congé officiel tombe un week-end ou un jour férié.</p>
+      <p><b class="out">Ce qui sort</b> <i>(récupération)</i> : les heures que tu reprends en congé.</p>
+    </div>
   </header>
 
   <!-- Soldes -->
@@ -321,7 +336,7 @@
       <select id="fCompte">
         <option value="ordinaire">Congé ordinaire</option>
         <option value="extraordinaire">Congé extraordinaire</option>
-        <option value="recup">Heures sup. / Compensation</option>
+        <option value="recup">Heures sup. &amp; compensation</option>
       </select>
     </div>
 
@@ -329,7 +344,7 @@
       <label>Sens</label>
       <div class="seg" id="fSens">
         <button type="button" class="minus on" data-sens="-1">− Retrait (heures posées)</button>
-        <button type="button" class="plus"     data-sens="1">+ Ajout (crédit / récup)</button>
+        <button type="button" class="plus"     data-sens="1">+ Ajout (crédit)</button>
       </div>
     </div>
 
@@ -402,7 +417,7 @@
       </div>
     </div>
     <div class="field">
-      <label>Heures sup. / Compensation — solde de départ</label>
+      <label>Heures sup. &amp; compensation — solde de départ</label>
       <div class="hm">
         <input type="number" id="sRecH" min="0" step="1" placeholder="0" inputmode="numeric"><span>h</span>
         <select id="sRecM"><option value="0">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option></select><span>min</span>
@@ -440,7 +455,7 @@ const HJ = 7.5;                       // 1 jour de travail = 7h30
 const COMPTES = {
   ordinaire:      { nom:"Congé ordinaire",        cls:"b1", jours:true },
   extraordinaire: { nom:"Congé extraordinaire",   cls:"b2", jours:true },
-  recup:          { nom:"Heures sup. / Compensation", cls:"b3", jours:false }
+  recup:          { nom:"Heures sup. & compensation", cls:"b3", jours:false }
 };
 
 let data = load();
@@ -608,11 +623,20 @@ function escapeHtml(s){
 }
 // Libellé d'une opération : sur le compteur heures sup., on distingue le sens.
 function opLabel(m){
-  if(m.compte === "recup") return m.heures >= 0 ? "Heures sup." : "Compensation";
+  if(m.compte === "recup") return m.heures >= 0 ? "Ce qui rentre (compensation)" : "Ce qui sort (récupération)";
   return COMPTES[m.compte].nom;
 }
 
 /* ---------- Ajout / édition ---------- */
+// Libellés des boutons : sur le compteur heures sup., on parle de ce qui rentre / sort.
+function majLibellesSens(){
+  const recup = document.getElementById("fCompte").value === "recup";
+  const moins = document.querySelector('#fSens button[data-sens="-1"]');
+  const plus  = document.querySelector('#fSens button[data-sens="1"]');
+  moins.textContent = recup ? "− Ce qui sort (récupération)" : "− Retrait (heures posées)";
+  plus.textContent  = recup ? "+ Ce qui rentre (compensation)" : "+ Ajout (crédit)";
+}
+
 function setSens(v){
   sens = v;
   document.querySelectorAll("#fSens button").forEach(b=>{
@@ -664,6 +688,7 @@ function startEdit(id){
   if(!m) return;
   editId = id;
   document.getElementById("fCompte").value = m.compte;
+  majLibellesSens();
   setSens(m.heures >= 0 ? 1 : -1);
   const abs = Math.abs(m.heures);
   const H = Math.floor(abs + 1e-9);
@@ -809,6 +834,10 @@ function init(){
   document.getElementById("cancelBtn").addEventListener("click", closeModal);
   document.getElementById("saveBtn").addEventListener("click", saveConfig);
   document.getElementById("modal").addEventListener("click", e=>{ if(e.target.id==="modal") closeModal(); });
+
+  // libellés des boutons selon le compte choisi
+  document.getElementById("fCompte").addEventListener("change", majLibellesSens);
+  majLibellesSens();
 
   // sens +/-
   document.getElementById("fSens").addEventListener("click", e=>{
